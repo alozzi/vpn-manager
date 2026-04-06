@@ -34,9 +34,12 @@ setup_ssh_protection() {
 
     log_message "Network state saved: gw=$default_gw if=$default_if ip=$local_ip"
 
-    # Flush stale rules from previous runs
-    sudo iptables -t mangle -F PREROUTING 2>/dev/null
-    sudo iptables -t mangle -F OUTPUT 2>/dev/null
+    # Remove only our rules (tagged with "vpn-mgr"), not the entire chain
+    local rule_nums
+    rule_nums=$(sudo iptables -t mangle -L PREROUTING --line-numbers -n 2>/dev/null | grep "vpn-mgr" | awk '{print $1}' | sort -rn)
+    for n in $rule_nums; do sudo iptables -t mangle -D PREROUTING "$n" 2>/dev/null; done
+    rule_nums=$(sudo iptables -t mangle -L OUTPUT --line-numbers -n 2>/dev/null | grep "vpn-mgr" | awk '{print $1}' | sort -rn)
+    for n in $rule_nums; do sudo iptables -t mangle -D OUTPUT "$n" 2>/dev/null; done
     sudo ip rule del fwmark 0x1 table lan_return 2>/dev/null
 
     # Ensure routing table exists
@@ -48,15 +51,13 @@ setup_ssh_protection() {
     sudo ip route add default via $default_gw dev $default_if table lan_return
     sudo ip route add $local_ip dev $default_if table lan_return
 
-    # Tag connections arriving on the LAN interface, restore mark on return traffic
-    sudo iptables -t mangle -A PREROUTING -i $default_if -j CONNMARK --set-mark 0x1
-    sudo iptables -t mangle -A OUTPUT -m connmark --mark 0x1 -j CONNMARK --restore-mark
+    sudo iptables -t mangle -A PREROUTING -i $default_if -m comment --comment "vpn-mgr" -j CONNMARK --set-mark 0x1
+    sudo iptables -t mangle -A OUTPUT -m connmark --mark 0x1 -m comment --comment "vpn-mgr" -j CONNMARK --restore-mark
 
-    # Docker containers: return traffic originates from bridge interfaces and goes
-    # through FORWARD, but the routing decision happens before mangle FORWARD.
-    # Mark these packets in PREROUTING so the kernel uses lan_return in time.
-    for bridge in $(ip link show type bridge 2>/dev/null | grep -oP 'br-[a-f0-9]+'); do
-        sudo iptables -t mangle -I PREROUTING -i "$bridge" -m connmark --mark 0x1 -j MARK --set-mark 0x1
+    # Docker: return traffic from containers goes through FORWARD, but routing
+    # happens before mangle FORWARD. Mark in PREROUTING so lan_return applies.
+    for bridge in $(ip -o link show type bridge 2>/dev/null | grep -oP '(docker0|br-[a-f0-9]+)'); do
+        sudo iptables -t mangle -I PREROUTING -i "$bridge" -m connmark --mark 0x1 -m comment --comment "vpn-mgr" -j MARK --set-mark 0x1
         log_message "Docker bridge $bridge added to LAN protection"
     done
 
@@ -258,7 +259,7 @@ test_connectivity() {
         print_row "LAN return path" "Missing" "$C_RED"
     fi
 
-    local mangle_rules=$(sudo iptables -t mangle -L -n 2>/dev/null | grep -c "CONNMARK")
+    local mangle_rules=$(sudo iptables -t mangle -L -n 2>/dev/null | grep -c "vpn-mgr")
     if [ "$mangle_rules" -gt 0 ]; then
         print_row "LAN connmark rules" "${mangle_rules} active" "$C_GREEN"
     else
