@@ -3,5 +3,6 @@ dist/
 vpn.conf.yaml
 .mcp.json
 .state
+.vpn-manager.pid
 logs/
 *.backup-*

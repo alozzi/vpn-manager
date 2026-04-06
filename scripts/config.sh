@@ -64,7 +64,7 @@ INSTALL_DIR="${INSTALL_DIR:-$_VPN_INSTALL_DIR}"
 LOG_FILE=$(_yaml '.paths.log-file')
 LOG_FILE="${LOG_FILE:-$INSTALL_DIR/logs/manager.log}"
 
-PID_FILE="/var/run/vpn-manager.pid"
+PID_FILE="$_VPN_INSTALL_DIR/.vpn-manager.pid"
 STOPPED_FILE="/tmp/vpn-manager.stopped"
 SSH_PROTECTION_MARKER="/tmp/vpn-manager-ssh-protected"
 CRON_TAG="vpn-manager"

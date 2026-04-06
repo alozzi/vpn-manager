@@ -44,8 +44,7 @@ setup_ssh_protection() {
     sudo iptables -I INPUT 1 -p tcp --dport 22 -j ACCEPT -m comment --comment "VPN: Allow SSH"
     sudo iptables -I INPUT 2 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "VPN: Allow established"
 
-    sudo mkdir -p /etc/iproute2
-    grep -q "100 ssh_return" /etc/iproute2/rt_tables 2>/dev/null || echo "100 ssh_return" | sudo tee -a /etc/iproute2/rt_tables >/dev/null
+    grep -q "100 ssh_return" /etc/iproute2/rt_tables || echo "100 ssh_return" | sudo tee -a /etc/iproute2/rt_tables
 
     sudo ip route flush table ssh_return 2>/dev/null
     sudo ip route add default via $default_gw dev $default_if table ssh_return
