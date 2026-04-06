@@ -64,14 +64,14 @@ All settings are in `vpn.conf` (gitignored). See `vpn.conf.example` for all opti
 
 All paths are resolved relative to the script location — no hardcoded install paths.
 
-## SSH Protection
+## LAN Protection
 
-When Tailscale sets an exit node, it rewrites the default route. Without protection, SSH return packets route through the VPN tunnel instead of the local network, killing the session.
+When Tailscale sets an exit node, it rewrites the default route. Without protection, return traffic for connections arriving from the local network (SSH, HTTP proxy, ping, etc.) gets routed through the VPN tunnel instead of back through the LAN interface.
 
 Protection works by:
-1. iptables INPUT: always accept SSH (port 22) and established connections
-2. iptables mangle: mark SSH return packets (sport 22) with fwmark 0x1
-3. Policy routing: marked packets use table `ssh_return` → original gateway
+1. iptables mangle PREROUTING: tag all connections arriving on the LAN interface with connmark 0x1
+2. iptables mangle OUTPUT: restore connmark on return packets
+3. Policy routing: marked packets use table `lan_return` → original gateway
 4. State tracked via `/tmp/vpn-manager-ssh-protected` (cleared on reboot, re-created on connect)
 
 ## Authentication

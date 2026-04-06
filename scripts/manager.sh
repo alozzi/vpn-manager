@@ -9,23 +9,22 @@ log_message() {
 
 setup_ssh_protection() {
     if [ -f "$SSH_PROTECTION_MARKER" ]; then
-        log_message "SSH protection already configured"
+        log_message "LAN protection already configured"
         return 0
     fi
 
-    log_message "Setting up SSH protection..."
+    log_message "Setting up LAN return-path protection..."
 
     local default_route=$(ip route show default | grep -v tailscale | head -1)
     local default_gw=$(echo "$default_route" | awk '{print $3}')
     local default_if=$(echo "$default_route" | awk '{print $5}')
     local local_ip=$(ip -4 addr show "$default_if" | grep inet | awk '{print $2}' | cut -d/ -f1)
 
-    # Use config overrides or auto-detected values
     default_gw="${DEFAULT_GATEWAY:-$default_gw}"
     default_if="${DEFAULT_INTERFACE:-$default_if}"
 
     if [ -z "$default_gw" ] || [ -z "$default_if" ]; then
-        log_message "ERROR: Cannot detect network gateway. Set DEFAULT_GATEWAY and DEFAULT_INTERFACE in vpn.conf"
+        log_message "ERROR: Cannot detect network gateway. Set DEFAULT_GATEWAY and DEFAULT_INTERFACE in vpn.conf.yaml"
         return 1
     fi
 
@@ -35,26 +34,28 @@ setup_ssh_protection() {
 
     log_message "Network state saved: gw=$default_gw if=$default_if ip=$local_ip"
 
-    # Clean up old rules
-    sudo iptables -D INPUT -p tcp --dport 22 -j ACCEPT -m comment --comment "VPN: Allow SSH" 2>/dev/null
-    sudo iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "VPN: Allow established" 2>/dev/null
-    sudo iptables -t mangle -D OUTPUT -p tcp --sport 22 -j MARK --set-mark 0x1 -m comment --comment "VPN: Mark SSH" 2>/dev/null
-    sudo ip rule del fwmark 0x1 table ssh_return 2>/dev/null
+    # Flush stale rules from previous runs
+    sudo iptables -t mangle -F PREROUTING 2>/dev/null
+    sudo iptables -t mangle -F OUTPUT 2>/dev/null
+    sudo ip rule del fwmark 0x1 table lan_return 2>/dev/null
 
-    sudo iptables -I INPUT 1 -p tcp --dport 22 -j ACCEPT -m comment --comment "VPN: Allow SSH"
-    sudo iptables -I INPUT 2 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT -m comment --comment "VPN: Allow established"
-
+    # Ensure routing table exists
     sudo mkdir -p /etc/iproute2
-    grep -q "100 ssh_return" /etc/iproute2/rt_tables 2>/dev/null || echo "100 ssh_return" | sudo tee -a /etc/iproute2/rt_tables >/dev/null
+    grep -q "100 lan_return" /etc/iproute2/rt_tables 2>/dev/null || echo "100 lan_return" | sudo tee -a /etc/iproute2/rt_tables >/dev/null
 
-    sudo ip route flush table ssh_return 2>/dev/null
-    sudo ip route add default via $default_gw dev $default_if table ssh_return
-    sudo ip route add $local_ip dev $default_if table ssh_return
+    # Route table: return traffic via original gateway
+    sudo ip route flush table lan_return 2>/dev/null
+    sudo ip route add default via $default_gw dev $default_if table lan_return
+    sudo ip route add $local_ip dev $default_if table lan_return
 
-    sudo iptables -t mangle -A OUTPUT -p tcp --sport 22 -j MARK --set-mark 0x1 -m comment --comment "VPN: Mark SSH"
-    sudo ip rule add fwmark 0x1 table ssh_return prio 100 2>/dev/null
+    # Tag connections arriving on the LAN interface, restore mark on return traffic
+    sudo iptables -t mangle -A PREROUTING -i $default_if -j CONNMARK --set-mark 0x1
+    sudo iptables -t mangle -A OUTPUT -m connmark --mark 0x1 -j CONNMARK --restore-mark
 
-    log_message "SSH protection configured successfully"
+    # Policy: marked packets use lan_return table
+    sudo ip rule add fwmark 0x1 table lan_return prio 100
+
+    log_message "LAN return-path protection configured (interface=$default_if, gw=$default_gw)"
     return 0
 }
 
@@ -89,7 +90,7 @@ connect_vpn() {
     echo "TAILSCALE SAFE CONNECTION"
     echo "=========================================="
     echo "Exit Node: $TS_EXIT_NODE"
-    echo "SSH Protection: ACTIVE"
+    echo "LAN Protection: ACTIVE"
     echo ""
 
     local ts_status=$(sudo tailscale status 2>&1)
@@ -243,17 +244,17 @@ test_connectivity() {
     local default_rt=$(ip route | grep default | head -1)
     print_row "Default route" "$(echo "$default_rt" | awk '{print $3, "via", $5}')" "$C_DIM"
 
-    if sudo ip rule list 2>/dev/null | grep -q ssh_return; then
-        print_row "SSH return path" "Configured" "$C_GREEN"
+    if sudo ip rule list 2>/dev/null | grep -q lan_return; then
+        print_row "LAN return path" "Configured" "$C_GREEN"
     else
-        print_row "SSH return path" "Missing" "$C_RED"
+        print_row "LAN return path" "Missing" "$C_RED"
     fi
 
-    local ssh_rules=$(sudo iptables -L INPUT -n 2>/dev/null | grep -c "dpt:22")
-    if [ "$ssh_rules" -gt 0 ]; then
-        print_row "SSH iptables rules" "${ssh_rules} active" "$C_GREEN"
+    local mangle_rules=$(sudo iptables -t mangle -L -n 2>/dev/null | grep -c "CONNMARK")
+    if [ "$mangle_rules" -gt 0 ]; then
+        print_row "LAN connmark rules" "${mangle_rules} active" "$C_GREEN"
     else
-        print_row "SSH iptables rules" "None" "$C_RED"
+        print_row "LAN connmark rules" "None" "$C_RED"
     fi
 }
 
@@ -340,7 +341,7 @@ case "$1" in
             fi
         fi
 
-        if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
             print_row "Manager" "Running (PID $(cat "$PID_FILE"))" "$C_GREEN"
         else
             print_row "Manager" "Stopped" "$C_DIM"
@@ -353,9 +354,9 @@ case "$1" in
         fi
 
         if [ -f "$SSH_PROTECTION_MARKER" ]; then
-            print_row "SSH Protection" "Active" "$C_GREEN"
+            print_row "LAN Protection" "Active" "$C_GREEN"
         else
-            print_row "SSH Protection" "Not configured" "$C_YELLOW"
+            print_row "LAN Protection" "Not configured" "$C_YELLOW"
         fi
 
         printf '│  %-57s │\n' ""
@@ -375,7 +376,7 @@ case "$1" in
 
     protect-ssh)
         setup_ssh_protection
-        echo "SSH protection configured"
+        echo "LAN protection configured"
         ;;
 
     logs)
