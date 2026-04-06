@@ -52,6 +52,14 @@ setup_ssh_protection() {
     sudo iptables -t mangle -A PREROUTING -i $default_if -j CONNMARK --set-mark 0x1
     sudo iptables -t mangle -A OUTPUT -m connmark --mark 0x1 -j CONNMARK --restore-mark
 
+    # Docker containers: return traffic originates from bridge interfaces and goes
+    # through FORWARD, but the routing decision happens before mangle FORWARD.
+    # Mark these packets in PREROUTING so the kernel uses lan_return in time.
+    for bridge in $(ip link show type bridge 2>/dev/null | grep -oP 'br-[a-f0-9]+'); do
+        sudo iptables -t mangle -I PREROUTING -i "$bridge" -m connmark --mark 0x1 -j MARK --set-mark 0x1
+        log_message "Docker bridge $bridge added to LAN protection"
+    done
+
     # Policy: marked packets use lan_return table
     sudo ip rule add fwmark 0x1 table lan_return prio 100
 
