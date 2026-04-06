@@ -1,0 +1,20 @@
+# VPN Manager Configuration
+# Copy to vpn.conf.yaml and fill in your values.
+# Supports ${VAR} interpolation from environment variables.
+
+providers:
+  - name: tailscale            # currently only "tailscale" is supported
+    exit-node: your-exit-node-hostname
+    hostname: your-machine-hostname
+    health-check-interval: 300 # seconds between health checks
+
+network:
+  # Auto-detected if not set
+  # gateway: 10.0.0.1
+  # interface: eth0
+  test-ip:                     # internal IP for connectivity test (blank = skip)
+
+paths:
+  # Defaults are relative to the install directory
+  # log-file: /var/log/vpn-manager.log
+  # install-dir: /opt/vpn-manager

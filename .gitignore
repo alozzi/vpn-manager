@@ -1,0 +1,7 @@
+dist/
+*.zip
+vpn.conf.yaml
+.mcp.json
+.state
+logs/
+*.backup-*
