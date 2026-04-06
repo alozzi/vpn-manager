@@ -14,6 +14,11 @@ if ! command -v yq &>/dev/null; then
     echo "ERROR: yq is required but not installed."
     echo "  See https://github.com/mikefarah/yq#install"
     exit 1
+elif ! yq --version 2>&1 | grep -q "github.com/mikefarah/yq"; then
+    echo "ERROR: Wrong yq installed (need mikefarah/yq, not the jq wrapper)."
+    echo "  Found: $(yq --version 2>&1 | head -1)"
+    echo "  Install: https://github.com/mikefarah/yq#install"
+    exit 1
 fi
 
 _yaml() {

@@ -33,10 +33,30 @@ check_dep() {
     fi
 }
 
+check_yq() {
+    printf "  %-20s" "yq (mikefarah)"
+    if command -v yq &>/dev/null; then
+        local ver=$(yq --version 2>&1 | head -1)
+        if echo "$ver" | grep -q "github.com/mikefarah/yq"; then
+            echo "OK  ($ver)"
+        else
+            echo "WRONG VERSION"
+            echo "    Found: $ver"
+            echo "    The apt 'yq' package is a jq wrapper and won't work."
+            echo "    Install mikefarah/yq: https://github.com/mikefarah/yq#install"
+            _ok=1
+        fi
+    else
+        echo "MISSING (required)"
+        echo "    Install: https://github.com/mikefarah/yq#install"
+        _ok=1
+    fi
+}
+
 echo "Checking dependencies..."
 echo ""
 check_dep tailscale   "Tailscale"    "https://tailscale.com/download/linux"
-check_dep yq          "yq"           "https://github.com/mikefarah/yq#install"
+check_yq
 check_dep envsubst    "envsubst"     "Part of gettext — install gettext or gettext-base"
 check_dep nc          "netcat"       "Install netcat or ncat via your package manager"  false
 check_dep ping        "ping"         "Install iputils-ping or inetutils-ping"           false
