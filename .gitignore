@@ -6,3 +6,4 @@ vpn.conf.yaml
 .vpn-manager.pid
 logs/
 *.backup-*
+.fuse_hidden*
