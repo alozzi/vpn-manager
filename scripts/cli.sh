@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 VPN_DIR="$(dirname "$SCRIPT_DIR")"
 MANAGER_SCRIPT="$VPN_DIR/scripts/manager.sh"
 SETUP_SCRIPT="$VPN_DIR/scripts/setup.sh"
+TOP_SCRIPT="$VPN_DIR/scripts/top.sh"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -26,6 +27,7 @@ show_help() {
     echo "  connect             One-time connect (no background manager)"
     echo "  disconnect          Disconnect exit node"
     echo "  status              Show connection status"
+    echo "  top                 Live monitor (htop-style, q to quit)"
     echo "  test                Test connectivity"
     echo "  recent [N]          Show last N log entries (default: 10)"
     echo "  logs                Follow live logs"
@@ -48,6 +50,9 @@ case "${1:-help}" in
     # Service management commands
     status)
         "$MANAGER_SCRIPT" status
+        ;;
+    top|monitor)
+        exec "$TOP_SCRIPT"
         ;;
     up|start)
         "$MANAGER_SCRIPT" up

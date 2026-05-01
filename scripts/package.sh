@@ -68,6 +68,7 @@ build_package() {
     cp "$VPN_DIR/scripts/config.sh"  "$stage/scripts/"
     cp "$VPN_DIR/scripts/manager.sh" "$stage/scripts/"
     cp "$VPN_DIR/scripts/cli.sh"     "$stage/scripts/"
+    cp "$VPN_DIR/scripts/top.sh"     "$stage/scripts/"
     cp "$VPN_DIR/scripts/setup.sh"   "$stage/scripts/"
     cp "$VPN_DIR/vpn.conf.example.yaml" "$stage/"
 

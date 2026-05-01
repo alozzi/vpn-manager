@@ -68,19 +68,26 @@ setup_ssh_protection() {
     return 0
 }
 
-is_vpn_connected() {  # accepts optional pre-fetched status as $1
+is_vpn_connected() {  # accepts optional pre-fetched status text as $1
     local ts_status="${1:-$(sudo tailscale status 2>&1)}"
 
+    # Fast text-based bailouts.
     if echo "$ts_status" | grep -q "Tailscale is stopped"; then
         return 1
     fi
     if echo "$ts_status" | grep -q "Logged out"; then
         return 1
     fi
-    if ! echo "$ts_status" | grep -q "$TS_EXIT_NODE"; then
-        return 1
-    fi
-    return 0
+
+    # Authoritative check: ExitNodeStatus.ID from --json. The text status
+    # always lists the peer hostname whether or not it's the active exit
+    # node, so a hostname grep is a false positive after a manual
+    # `tailscale set --exit-node=`. Without this, the daemon's monitoring
+    # loop thinks "still connected" and skips reconnects indefinitely.
+    local exit_id
+    exit_id=$(sudo tailscale status --json 2>/dev/null \
+              | yq -p json -r '.ExitNodeStatus.ID // ""' 2>/dev/null)
+    [ -n "$exit_id" ]
 }
 
 kill_vpn() {
